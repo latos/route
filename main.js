@@ -28,18 +28,19 @@ function PersonCtrl(createUi, route, person) {
 function HelpCtrl(createUi) {
   this.ui = createUi('help.html');
 }
-function PeopleCtrl(createUi, route) {
+function PeopleCtrl(createUi, route, di) {
+  console.log('PeopleCtrl ctor');
   route({
-    '.+': function(di, itemId) {
-      di.load({
+    '.+': function(linkChild, itemId) {
+      return di.child({
         'itemId' : itemId,
         'person' : function (itemId) {
           console.log('itemId', itemId);
           return peopleMap[itemId];
         }
-      });
-
-      return di.make(PersonCtrl);
+      })
+      .value('route', linkChild())
+      .make(PersonCtrl);
     }
   });
 
@@ -56,7 +57,7 @@ var ItemModule = {
   }
 };
 
-function AppCtrl(createUi, route) {
+function AppCtrl(createUi, route, di) {
 
   this.ui = createUi('app.html', {
     x: 'y',
@@ -65,19 +66,28 @@ function AppCtrl(createUi, route) {
   });
 
 
+  var helpCtrl = di.make(HelpCtrl);
+
+
+  var peopleRoute1 = route.child('people');
+  var people1 = di.make(PeopleCtrl, {route: peopleRoute1});
+
 
 
   route({
-    'people': function(di) {
-      di.load(ItemModule);
-
-      return di.make(PeopleCtrl);
+    'people': function(linkChild) {
+      linkChild(peopleRoute1);
+      return people1;
     },
 
-    'help': function(di) {
+    'people2': function(linkChild) {
+      return di.child(ItemModule)
+      .value('route', linkChild())
+      .make(PeopleCtrl);
+    },
 
-
-      return di.make(HelpCtrl);
+    'help': function(linkChild) {
+      return helpCtrl;
     }
   });
 

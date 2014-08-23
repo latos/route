@@ -1,4 +1,4 @@
-function createNgRouter(di, $location, $rootScope) {
+function createNgRouter($location, $rootScope) {
   var listener;
   var adapter = {
     addListener: function(l) {
@@ -11,10 +11,11 @@ function createNgRouter(di, $location, $rootScope) {
   $rootScope.$watch(function() { return $location.path(); }, function(path) {
     listener && listener(path);
   });
-  return createRouter(di, null, adapter);
+  return createRouter(null, adapter);
 }
 
-function createRouter(di, parent, location){
+
+function createRouter(parent, location){
   var map = null;
   function route(routeMap) {
     if (map) {
@@ -30,6 +31,8 @@ function createRouter(di, parent, location){
       route.updateSegments(route._initSegments);
       route._initSegments = null;
     }
+
+    return route; // for convenience
   }
 
   /**
@@ -72,6 +75,8 @@ function createRouter(di, parent, location){
     location.set(r.prefix() + (path ? '/' + path : ''));
   };
 
+  var currentChildLinker = null;
+
   route.updateSegments = function(segments) {
     var seg = segments[0] || '';
 
@@ -79,7 +84,7 @@ function createRouter(di, parent, location){
       console.log("UNCHANGED", seg);
       if (currentChild) {
         console.log("and updating child", segments);
-          currentChild.updateSegments(segments.slice(1));
+        currentChild.updateSegments(segments.slice(1));
       }
     } else {
       console.log("CHANGED", seg, currentSegment);
@@ -92,17 +97,28 @@ function createRouter(di, parent, location){
         console.log('matching', seg, ' against', k);
         var matches = seg.match('^' + k + '$');
         if (matches) {
-          console.log("Yay got match", matches);
-          var childInjector = di.child({
-            'route': function(di) { // inject child injector
-              currentChild = createRouter(di, route, location);
-              currentChild._initSegments = segments.slice(1);
-              return currentChild;
+
+          var childSegments = segments.slice(1);
+
+          function linkChild(reusedChildRouter) {
+            if (linkChild != currentChildLinker) {
+              console.warn('ignoring call to linkChild(), as a new one has superseded it');
+              return;
             }
-          });
+
+            if (!reusedChildRouter) {
+              currentChild = route.child(seg);
+              currentChild._initSegments = childSegments;
+            } else {
+              currentChild = reusedChildRouter;
+              currentChild.updateSegments(childSegments);
+            }
+            return currentChild;
+          }
+          currentChildLinker = linkChild;
 
           
-          var args = [childInjector].concat(matches);
+          var args = [linkChild].concat(matches);
 
           route.current = map[k].apply(null, args);
 
@@ -111,6 +127,20 @@ function createRouter(di, parent, location){
       }
 
     }
+  };
+
+  route.child = function(segment) {
+    // TODO: use segment argument.
+    // change it so the child stores the segment to reach it,
+    // not the current segment.  it can still store the current child router,
+    // which implies the current child segment.  that means a router's prefix path
+    // is immutable, which is a nice property to have and lets us do cool things.
+
+    if (segment.indexOf('/') >= 0) {
+      throw new Error('Path segment cannot contain /');
+    }
+
+    return createRouter(route, location);
   };
 
   route.path = function() {
