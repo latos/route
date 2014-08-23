@@ -1,0 +1,8 @@
+<h2>People</h2>
+<ul>
+  <li ng-repeat='person in ui.people'>
+    <a ng-click='ui.route.go(person.id)'> {{person.name}}</a>
+  </li>
+</ul>
+
+<div ui='ui.route.current.ui'></div>
