@@ -11,18 +11,25 @@ function createNgRouter($location, $rootScope) {
   $rootScope.$watch(function() { return $location.path(); }, function(path) {
     listener && listener(path);
   });
-  return createRouter(null, adapter);
+  return createRouter(null, null, adapter);
 }
 
 
-function createRouter(parent, location){
-  var map = null;
+function createRouter(basename, parent, location){
+  basename = basename || '';
+  parent = parent || null;
+  if ( (basename === '') != (parent === null) ) {
+    throw new Error(
+      'Only root may have an empty basename, and root must have an empty basename');
+  }
+
+  var mappings = null;
   function route(routeMap) {
-    if (map) {
+    if (mappings) {
       throw new Error('already initialised');
     }
 
-    map = routeMap;
+    mappings = routeMap;
 
 
     //route.updateSegments();
@@ -39,8 +46,6 @@ function createRouter(parent, location){
    * Current controller
    */
   route.current = null;
-
-  var currentSegment = '';
 
   var currentChild = null;
 
@@ -75,52 +80,74 @@ function createRouter(parent, location){
     location.set(r.prefix() + (path ? '/' + path : ''));
   };
 
-  var currentChildLinker = null;
+  route.basename = function() {
+    return basename;
+  };
+
+  var currentSetter = null;
 
   route.updateSegments = function(segments) {
+    var childSegments = segments.slice(1);
+
+    // Fiddly code that is effecitvely:
+    //    mappingsInitialized.then -> do the rest of this function.
+    if (!mappings) {
+      route._initsegments = childSegments;
+      return;
+    }
+
     var seg = segments[0] || '';
 
-    if (seg === currentSegment) {
+    if (currentChild && seg === currentChild.basename()) {
       console.log("UNCHANGED", seg);
       if (currentChild) {
         console.log("and updating child", segments);
-        currentChild.updateSegments(segments.slice(1));
+        currentChild.updateSegments(childSegments);
       }
     } else {
-      console.log("CHANGED", seg, currentSegment);
-
-      currentSegment = seg;
       currentChild = null;
       route.current = null;
 
-      for (var k in map) {
+      var len = mappings.length;
+      for (var i = 0; i < len; i++) {
+        var k = mappings[i][0];
+        var func = mappings[i][1];
+
         console.log('matching', seg, ' against', k);
         var matches = seg.match('^' + k + '$');
         if (matches) {
 
-          var childSegments = segments.slice(1);
-
-          function linkChild(reusedChildRouter) {
-            if (linkChild != currentChildLinker) {
-              console.warn('ignoring call to linkChild(), as a new one has superseded it');
+          function setCurrent(currentObject) {
+            if (setCurrent != currentSetter) {
+              console.warn('ignoring call to setCurrent(), as a new one has superseded it');
               return;
             }
 
-            if (!reusedChildRouter) {
-              currentChild = route.child(seg);
-              currentChild._initSegments = childSegments;
-            } else {
-              currentChild = reusedChildRouter;
-              currentChild.updateSegments(childSegments);
-            }
-            return currentChild;
+            route.current = currentObject;
           }
-          currentChildLinker = linkChild;
+          currentSetter = setCurrent;
 
           
-          var args = [linkChild].concat(matches);
+          var args = [setCurrent].concat(matches);
 
-          route.current = map[k].apply(null, args);
+          var newChild = func.apply(null, args);
+          if (newChild !== null) {
+            if (newChild === undefined) {
+              throw new Error('You forgot to return something from route function. '
+                  + 'Return a route child, or null if no further routing is useful.');
+            }
+            if (!newChild.basename) {
+              throw new Error('Did not return a route child from route function');
+            }
+
+            if (newChild.basename() != seg) {
+              throw new Error('returned route child "' + newChild.basename() 
+                + '" did not match expected: "' + seg + '"');
+
+            }
+
+            currentChild = newChild;
+          }
 
           break;
         }
@@ -129,7 +156,7 @@ function createRouter(parent, location){
     }
   };
 
-  route.child = function(segment) {
+  route.child = function(segment, mappings /*optional*/) {
     // TODO: use segment argument.
     // change it so the child stores the segment to reach it,
     // not the current segment.  it can still store the current child router,
@@ -140,27 +167,24 @@ function createRouter(parent, location){
       throw new Error('Path segment cannot contain /');
     }
 
-    return createRouter(route, location);
+    var r = createRouter(segment, route, location);
+
+    if (mappings) {
+      r(mappings);
+    }
+
+    return r;
   };
 
   route.path = function() {
-    return currentSegment + (currentChild ? '/' + currentChild.path() : '');
-  };
-  route.fullPath = function() {
-    return '/' + route.root.path();
-  };
-  route.dirname = function() {
-    return route.prefix() || '/';
+    return '/' + route.prefix();
   };
   route.prefix = function() {
     if (route.parent) {
-      return route.parent.prefix() + '/' + route.parent.currentSegment();
+      return route.parent.prefix() + '/' + basename;
     } else {
       return '';
     }
-  };
-  route.currentSegment = function() {
-    return currentSegment;
   };
 
   if (!parent) {

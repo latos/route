@@ -30,19 +30,22 @@ function HelpCtrl(createUi) {
 }
 function PeopleCtrl(createUi, route, di) {
   console.log('PeopleCtrl ctor');
-  route({
-    '.+': function(linkChild, itemId) {
-      return di.child({
+  route([
+    ['.+', function(setCurrent, itemId) {
+      var routeChild = route.child(itemId);
+      setCurrent(di.child({
         'itemId' : itemId,
         'person' : function (itemId) {
           console.log('itemId', itemId);
           return peopleMap[itemId];
         }
       })
-      .value('route', linkChild())
-      .make(PersonCtrl);
-    }
-  });
+      .value('route', routeChild)
+      .make(PersonCtrl));
+
+      return routeChild;
+    }]
+  ]);
 
   this.ui = createUi('people.html', {
     people: people,
@@ -70,25 +73,57 @@ function AppCtrl(createUi, route, di) {
 
 
   var peopleRoute1 = route.child('people');
-  var people1 = di.make(PeopleCtrl, {route: peopleRoute1});
+  var people1Ctrl = di.make(PeopleCtrl, {route: peopleRoute1});
 
+  var foozRoute = route.child('fooz', {
+    // todo
 
-
-  route({
-    'people': function(linkChild) {
-      linkChild(peopleRoute1);
-      return people1;
-    },
-
-    'people2': function(linkChild) {
-      return di.child(ItemModule)
-      .value('route', linkChild())
-      .make(PeopleCtrl);
-    },
-
-    'help': function(linkChild) {
-      return helpCtrl;
-    }
   });
+
+  /*
+  var r = new RouteHelper(route, di);
+
+  route(
+    ['people', function() {}],
+    ['.*', function() {}],
+
+
+     r.fixed('people', PeopleCtrl, Module, function(r) {
+     }),
+
+     r.dynamic('.*', PeopleCtrl, Module, function(r) {
+       r.route(
+          r.dick
+        ...
+        ...
+
+       );
+
+     });
+
+*/
+
+
+
+  route([
+    ['people', function(setCurrent) {
+      setCurrent(people1Ctrl);
+      return peopleRoute1;
+    }],
+
+    ['people2', function(setCurrent, x) {
+      var routeChild = route.child(x);
+      setCurrent(
+        di.child(ItemModule)
+        .value('route', routeChild)
+        .make(PeopleCtrl));
+      return routeChild;
+    }],
+
+    ['help', function(setCurrent) {
+      setCurrent(helpCtrl);
+      return null;
+    }]
+  ]);
 
 }
