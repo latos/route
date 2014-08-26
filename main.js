@@ -93,7 +93,6 @@ function AppCtrl(createUi, route, di) {
 
      r.dynamic('.*', PeopleCtrl, Module, function(r) {
        r.route(
-          r.dick
         ...
         ...
 
