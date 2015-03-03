@@ -1,8 +1,24 @@
 {
-  "name": "routeapp",
-  "version": "0.1.0",
-  "dependencies": {
-    "angular": "1.3.0-beta.7",
-    "heroin": "0.0.1"
-  }
+  "name": "hxroute",
+  "version": "0.0.1",
+  "homepage": "https://github.com/latos/route",
+  "authors": [
+    "Daniel Danilatos <daniel@helixta.com.au>"
+  ],
+  "description": "Flexible client router",
+  "main": "route.js",
+  "keywords": [
+    "route",
+    "hx",
+    "helix",
+    "router"
+  ],
+  "license": "MIT",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ]
 }

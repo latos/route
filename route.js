@@ -1,4 +1,10 @@
-function createNgRouter($location, $rootScope) {
+if (typeof window.hx === 'undefined') {
+  window.hx = {};
+}
+
+hx.route = {};
+
+hx.route.createNgRouter = function($location, $rootScope) {
   var listener;
   var adapter = {
     addListener: function(l) {
@@ -6,16 +12,23 @@ function createNgRouter($location, $rootScope) {
     },
     set: function(path) {
       $location.path(path);
-    }
+    },
+    reload: function(path) {
+      $location.path(path);
+      $window.location.reload();
+    },
+    path: function() {
+      return $location.path();
+    },
   };
   $rootScope.$watch(function() { return $location.path(); }, function(path) {
     listener && listener(path);
   });
-  return createRouter(null, null, adapter);
+  return hx.route.createRoot(null, null, adapter);
 }
 
 
-function createRouter(basename, parent, location){
+hx.route.createRoot = function createRoot(basename, parent, location){
   basename = basename || '';
   parent = parent || null;
   if ( (basename === '') != (parent === null) ) {
@@ -24,12 +37,14 @@ function createRouter(basename, parent, location){
   }
 
   var mappings = null;
-  function route(routeMap) {
+  var defaultRoute = null;
+  function route(routeMap, defaultRoute_) {
     if (mappings) {
       throw new Error('already initialised');
     }
 
     mappings = routeMap;
+    defaultRoute = defaultRoute_;
 
 
     //route.updateSegments();
@@ -53,7 +68,7 @@ function createRouter(basename, parent, location){
   route.root = parent ? parent.root : route;
 
   route.go = function(path) {
-    console.log('Update', route.prefix(), path, route.root == route);
+    console.debug('Update', route.prefix(), path, route.root == route);
     // Initial slash means start from root
     var r = route;
     if (path.charAt(0) == '/') {
@@ -75,10 +90,20 @@ function createRouter(basename, parent, location){
         throw new Error('Trying to go higher than root with ' + path);
       }
     }
+    // reconstruct path, remove possible ../
+    path = segments.join('/');
 
     // Pump all changes through the location, and listen to it.
     location.set(r.prefix() + (path ? '/' + path : ''));
   };
+
+  route.reload = function(path) {
+    location.reload(path);
+  }
+
+  route.location = function() {
+    return location.path();
+  }
 
   route.basename = function() {
     return basename;
@@ -92,18 +117,14 @@ function createRouter(basename, parent, location){
     // Fiddly code that is effecitvely:
     //    mappingsInitialized.then -> do the rest of this function.
     if (!mappings) {
-      route._initsegments = childSegments;
+      route._initSegments = segments;
       return;
     }
 
     var seg = segments[0] || '';
 
     if (currentChild && seg === currentChild.basename()) {
-      console.log("UNCHANGED", seg);
-      if (currentChild) {
-        console.log("and updating child", segments);
-        currentChild.updateSegments(childSegments);
-      }
+      console.debug("unchanged", seg);
     } else {
       currentChild = null;
       route.current = null;
@@ -113,9 +134,10 @@ function createRouter(basename, parent, location){
         var k = mappings[i][0];
         var func = mappings[i][1];
 
-        console.log('matching', seg, ' against', k);
-        var matches = seg.match('^' + k + '$');
+        // console.debug('matching', seg, ' against', k);
+        var matches = seg.match(k instanceof RegExp ? k : '^' + k + '$');
         if (matches) {
+          // console.debug('matched!');
 
           function setCurrent(currentObject) {
             if (setCurrent != currentSetter) {
@@ -124,13 +146,17 @@ function createRouter(basename, parent, location){
             }
 
             route.current = currentObject;
+
+            if (currentObject && currentObject.refresh) {
+              currentObject.refresh();
+            }
           }
           currentSetter = setCurrent;
 
           
           var args = [setCurrent].concat(matches);
 
-          var newChild = func.apply(null, args);
+          var newChild = func.apply(route, args);
           if (newChild !== null) {
             if (newChild === undefined) {
               throw new Error('You forgot to return something from route function. '
@@ -143,7 +169,6 @@ function createRouter(basename, parent, location){
             if (newChild.basename() != seg) {
               throw new Error('returned route child "' + newChild.basename() 
                 + '" did not match expected: "' + seg + '"');
-
             }
 
             currentChild = newChild;
@@ -152,7 +177,14 @@ function createRouter(basename, parent, location){
           break;
         }
       }
+    }
 
+    if (currentChild) {
+      console.debug("and updating child", segments);
+      currentChild.updateSegments(childSegments);
+    } else if (defaultRoute) {
+      console.debug("go to default route '" + defaultRoute + "'");
+      route.go(defaultRoute);
     }
   };
 
@@ -167,7 +199,7 @@ function createRouter(basename, parent, location){
       throw new Error('Path segment cannot contain /');
     }
 
-    var r = createRouter(segment, route, location);
+    var r = hx.route.createRoot(segment, route, location);
 
     if (mappings) {
       r(mappings);
@@ -186,22 +218,34 @@ function createRouter(basename, parent, location){
       return '';
     }
   };
+  
+  route.currentChild = function() {
+    return currentChild;
+  };
+  
+  route.isActive = function() {
+    if (route == route.root) {
+      return true;
+    }
+    
+    return parent.currentChild() == route && parent.isActive();
+  };
 
   if (!parent) {
     location.addListener(function(path) {
       if (!path.charAt(0) == '/') {
         location.set('/' + path);
       } else if (path.charAt(path.length - 1) == '/') {
-        console.log("SWITCHING");
+        console.debug("Switching");
         location.set(path.substr(0, path.length - 1));
       } else {
-        console.log("Proceeding with", path);
+        console.debug("Proceeding with", path);
         route.updateSegments(path.split(/\//).slice(1));
       }
     });
   }
 
-  console.log('Created router on', route.prefix());
+  console.debug('Created router on', route.prefix());
 
   return route;
 }
